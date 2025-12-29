@@ -16,7 +16,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { mastra } from '../mastra';
+import { orchestratorAgent } from '../agents/orchestrator-agent.js';
+import { calendarStore } from '../memory/calendar-store.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,11 +54,8 @@ app.post('/api/agent/query', async (req, res) => {
 
     console.log(`[API] Processing query: "${message}"`);
 
-    // Get orchestrator agent
-    const orchestrator = mastra.agents.orchestrator;
-
-    // Generate response
-    const result = await orchestrator.generate(message, {
+    // Generate response using orchestrator agent
+    const result = await orchestratorAgent.generate(message, {
       ...(threadId && { threadId }), // Include threadId if provided for conversation continuity
     });
 
@@ -108,10 +106,8 @@ app.post('/api/agent/stream', async (req, res) => {
 
     console.log(`[API] Streaming query: "${message}"`);
 
-    const orchestrator = mastra.agents.orchestrator;
-
     // Stream the response
-    const stream = await orchestrator.stream(message, {
+    const stream = await orchestratorAgent.stream(message, {
       ...(threadId && { threadId }),
     });
 
@@ -141,7 +137,6 @@ app.post('/api/agent/stream', async (req, res) => {
  */
 app.get('/api/calendar/events', async (req, res) => {
   try {
-    const { calendarStore } = await import('../memory/calendar-store');
     const events = calendarStore.getAllEvents();
 
     res.json({

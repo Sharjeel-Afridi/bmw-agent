@@ -24,7 +24,7 @@ if (!process.env.GEMINI_API_KEY) {
  * Default Gemini model for all agents
  * Using flash for speed and cost efficiency
  */
-export const geminiFlash = google('gemini-1.5-flash', {
+export const geminiFlash = google('gemini-2.5-flash', {
   apiKey: process.env.GEMINI_API_KEY,
 });
 

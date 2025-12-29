@@ -15,6 +15,7 @@
 
 import { Agent } from '@mastra/core/agent';
 import { createCalendarEventTool, listCalendarEventsTool } from '../tools/calendar-tools';
+import { geminiFlash } from '../llm/gemini';
 
 export const orchestratorAgent = new Agent({
   name: 'Orchestrator Agent',
@@ -45,7 +46,7 @@ You: [Call create-calendar-event tool with appropriate parameters]
 Response: "I've scheduled a 2-hour coding session from 1:00 PM to 3:00 PM."
   `.trim(),
   
-  model: 'gemini-1.5-flash',
+  model: geminiFlash,
   
   // Tools available to this agent
   tools: {
