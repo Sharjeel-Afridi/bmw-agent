@@ -1,7 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
-import type { FormEvent } from 'react';
-import ChatMessage from './components/ChatMessage';
-import EventsList from './components/EventsList';
+import { useState, useEffect } from 'react';
+import { Sparkles } from 'lucide-react';
+import FilesCard from './components/FilesCard';
+import MeetingsCard from './components/MeetingsCard';
+import MessagesCard from './components/MessagesCard';
+import EmailsCard from './components/EmailsCard';
+import ChatInput from './components/ChatInput';
+import ChatModal from './components/ChatModal';
 import type { Message, CalendarEvent, AgentResponse, CalendarEventsResponse } from './types';
 
 const API_URL = '/api'; // Use proxy in development
@@ -13,18 +17,10 @@ function App() {
       type: 'system',
     },
   ]);
-  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [threadId] = useState(`thread-${Date.now()}`);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [messages]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Load events on mount
   useEffect(() => {
@@ -44,16 +40,13 @@ function App() {
     }
   };
 
-  const sendMessage = async (e?: FormEvent) => {
-    e?.preventDefault();
-    const message = inputValue.trim();
-
+  const sendMessage = async (message: string) => {
     if (!message || isLoading) return;
 
     // Add user message
     setMessages(prev => [...prev, { text: message, type: 'user' }]);
-    setInputValue('');
     setIsLoading(true);
+    setIsChatOpen(true); // Open chat modal when sending message
 
     try {
       const response = await fetch(`${API_URL}/agent/query`, {
@@ -106,78 +99,75 @@ function App() {
     }
   };
 
-  const handleExampleClick = (text: string) => {
-    setInputValue(text);
-  };
-
-  const examples = [
-    'Schedule a 2-hour coding session after lunch',
-    'Create a meeting with the team at 3pm for 1 hour',
-    'Block off time for deep work tomorrow morning',
-    'List all my calendar events',
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary to-secondary p-5">
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center text-white mb-8">
-          <h1 className="text-4xl font-bold mb-2">🤖 AI Productivity Agent</h1>
-          <p className="text-lg opacity-90">Powered by Mastra & Google Gemini</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-2xl p-8 mb-5">
-          <div 
-            className="h-96 overflow-y-auto mb-5 p-4 bg-gray-50 rounded-lg"
-            ref={chatContainerRef}
-          >
-            {messages.map((message, index) => (
-              <ChatMessage key={index} message={message} />
-            ))}
-          </div>
-
-          <form onSubmit={sendMessage} className="flex gap-2 mb-5">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="e.g., Schedule a team meeting tomorrow at 3pm for 1 hour"
-              disabled={isLoading}
-              className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg text-base outline-none transition-colors focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="px-6 py-3 bg-primary text-white rounded-lg text-base cursor-pointer transition-colors font-semibold hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  Thinking<span className="inline-block w-3 h-3 border-2 border-gray-200 border-t-primary rounded-full animate-spin ml-2"></span>
-                </>
-              ) : (
-                'Send'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-5">
-            <h3 className="text-lg mb-2 text-gray-800">💡 Try these examples:</h3>
-            <div className="flex flex-wrap gap-2">
-              {examples.map((example, index) => (
-                <button
-                  key={index}
-                  className="px-4 py-2 bg-gray-100 text-gray-800 border border-gray-300 rounded-md text-sm cursor-pointer transition-all hover:bg-primary hover:text-white hover:border-primary"
-                  onClick={() => handleExampleClick(example)}
-                  type="button"
-                >
-                  {example}
-                </button>
-              ))}
+    <div className="min-h-screen bg-[#f8f9fa] pb-32">
+      {/* Header */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-primary to-secondary p-3 rounded-xl">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">AI Productivity Agent</h1>
+              <p className="text-sm text-gray-500">Powered by Mastra & Google Gemini</p>
             </div>
           </div>
+          
+          {messages.length > 1 && (
+            <button
+              onClick={() => setIsChatOpen(true)}
+              className="px-4 py-2 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-sm font-medium text-gray-700 border border-gray-200"
+            >
+              View Chat History
+            </button>
+          )}
+        </div>
 
-          <EventsList events={events} />
+        {/* Bento Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Files Card - Spans 1 column */}
+          <div className="lg:col-span-1">
+            <FilesCard />
+          </div>
+
+          {/* Meetings Card - Spans 2 columns on large screens */}
+          <div className="lg:col-span-2">
+            <MeetingsCard events={events} />
+          </div>
+
+          {/* Messages Card */}
+          <div className="lg:col-span-1">
+            <MessagesCard />
+          </div>
+
+          {/* Emails Card */}
+          <div className="lg:col-span-1">
+            <EmailsCard />
+          </div>
+
+          {/* Placeholder for future integrations */}
+          <div className="lg:col-span-1 bg-white rounded-2xl p-6 shadow-sm border-2 border-dashed border-gray-200 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-500">More integrations</p>
+              <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Chat Input */}
+      <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+
+      {/* Chat Modal */}
+      <ChatModal 
+        messages={messages}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
     </div>
   );
 }
