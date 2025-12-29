@@ -272,6 +272,7 @@
     // Configuration
     const API_URL = 'http://localhost:3000/api';
     let isLoading = false;
+    let threadId = `thread-${Date.now()}`; // Unique thread ID for conversation memory
 
     // Add message to chat
     function addMessage(text, type = 'agent', toolCalls = null) {
@@ -314,7 +315,10 @@
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ 
+            message,
+            threadId // Include threadId for conversation memory
+          }),
         });
 
         const data = await response.json();
