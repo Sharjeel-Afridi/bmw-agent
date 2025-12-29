@@ -18,6 +18,7 @@ import { createCalendarEventTool, listCalendarEventsTool } from '../tools/calend
 
 export const orchestratorAgent = new Agent({
   name: 'Orchestrator Agent',
+  description: 'A personal productivity assistant that helps users manage their calendar and schedule tasks using natural language.',
   
   instructions: `
 You are a personal productivity assistant that helps users manage their calendar and tasks.

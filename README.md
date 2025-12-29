@@ -7,11 +7,13 @@ A clean, production-ready AI agent built with Mastra and Google Gemini for hacka
 - 🤖 Orchestrator agent powered by Gemini 1.5 Flash
 - 📅 Calendar event creation tool
 - 💾 In-memory storage (easily upgradeable)
+- 🌐 REST API with Express (ready for frontend)
+- 🔌 MCP Server (works with Claude Desktop & Cline)
 - 🔧 Type-safe with TypeScript
 - 📝 Structured logging
 - 👁️ Built-in observability
 
-## Setup
+## Quick Start
 
 ### 1. Install Dependencies
 
@@ -31,13 +33,24 @@ Get your Gemini API key from: https://aistudio.google.com/apikey
 
 Edit `.env` and replace `your_gemini_api_key_here` with your actual key.
 
-### 3. Run the Agent
+### 3. Choose Your Interface
 
+**Option A: Test the agent directly**
 ```bash
 npm run dev
 ```
 
-You should see the agent process the default test prompt and create a calendar event.
+**Option B: Start the REST API server**
+```bash
+npm run server
+```
+Then open http://localhost:3000 for the web UI.
+
+**Option C: Start the MCP server (for Claude Desktop)**
+```bash
+npm run mcp
+```
+See [MCP_QUICKSTART.md](MCP_QUICKSTART.md) for Claude Desktop setup.
 
 ## Project Structure
 
@@ -51,27 +64,26 @@ src/
 │   └── calendar-store.ts        # In-memory event storage
 ├── llm/
 │   └── gemini.ts                # Gemini configuration
+├── server/
+│   ├── api.ts                   # REST API server
+│   ├── mcp.ts                   # MCP server (Claude Desktop)
+│   └── public/
+│       └── index.html           # Demo web UI
 ├── mastra.ts                    # Mastra instance configuration
 └── index.ts                     # Entry point & test execution
 ```
 
-## Usage
+## Usage Guides
 
-### Test the Agent
-
-Modify the `userInput` in [src/index.ts](src/index.ts) to test different prompts:
-
-```typescript
-const userInput = "Schedule a 2-hour coding session after lunch tomorrow";
-```
-
-### View Calendar Events
-
-All created events are displayed after agent execution.
+- **Backend Testing**: See [QUICKSTART.md](QUICKSTART.md)
+- **Frontend Integration**: See [FRONTEND_QUICKSTART.md](FRONTEND_QUICKSTART.md)
+- **MCP Server Setup**: See [MCP_QUICKSTART.md](MCP_QUICKSTART.md)
 
 ## Available Scripts
 
 - `npm run dev` - Run the agent with hot reload
+- `npm run server` - Start the REST API server (port 3000)
+- `npm run mcp` - Start the MCP server (for Claude Desktop)
 - `npm run build` - Build for production
 - `npm run start` - Run production build
 - `npm run mastra:dev` - Start Mastra dev server (for UI)
