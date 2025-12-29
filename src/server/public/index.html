@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Productivity Agent - Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 1.1rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      margin-bottom: 20px;
+    }
+
+    .chat-container {
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      max-width: 80%;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      background: #667eea;
+      color: white;
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .message.agent {
+      background: white;
+      border: 1px solid #e0e0e0;
+    }
+
+    .message.system {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      font-size: 0.9rem;
+      color: #856404;
+      max-width: 100%;
+      text-align: center;
+    }
+
+    .input-container {
+      display: flex;
+      gap: 10px;
+    }
+
+    #messageInput {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    #messageInput:focus {
+      border-color: #667eea;
+    }
+
+    button {
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s;
+      font-weight: 600;
+    }
+
+    button:hover:not(:disabled) {
+      background: #5568d3;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .examples {
+      margin-top: 20px;
+    }
+
+    .examples h3 {
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .example-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .example-btn {
+      padding: 8px 16px;
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .example-btn:hover {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+
+    .events-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    .event-item {
+      padding: 10px;
+      background: #f8f9fa;
+      border-left: 3px solid #667eea;
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+
+    .event-item strong {
+      color: #667eea;
+    }
+
+    .event-time {
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-left: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .tool-calls {
+      margin-top: 10px;
+      padding: 10px;
+      background: #e3f2fd;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #1565c0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 AI Productivity Agent</h1>
+      <p>Powered by Mastra & Google Gemini</p>
+    </div>
+
+    <div class="card">
+      <div id="chatContainer" class="chat-container">
+        <div class="message system">
+          👋 Welcome! I can help you schedule events, manage your calendar, and more. Try asking me to schedule something!
+        </div>
+      </div>
+
+      <div class="input-container">
+        <input 
+          type="text" 
+          id="messageInput" 
+          placeholder="e.g., Schedule a team meeting tomorrow at 3pm for 1 hour"
+          onkeypress="handleKeyPress(event)"
+        />
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
+
+      <div class="examples">
+        <h3>💡 Try these examples:</h3>
+        <div class="example-buttons">
+          <button class="example-btn" onclick="useExample('Schedule a 2-hour coding session after lunch')">
+            📅 Schedule coding session
+          </button>
+          <button class="example-btn" onclick="useExample('Create a meeting with the team at 3pm for 1 hour')">
+            👥 Team meeting
+          </button>
+          <button class="example-btn" onclick="useExample('Block off time for deep work tomorrow morning')">
+            🧠 Deep work time
+          </button>
+          <button class="example-btn" onclick="useExample('List all my calendar events')">
+            📋 Show events
+          </button>
+        </div>
+      </div>
+
+      <div id="eventsSection" class="events-section" style="display: none;">
+        <h3>📅 Calendar Events</h3>
+        <div id="eventsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const API_URL = 'http://localhost:3000/api';
+    let isLoading = false;
+
+    // Add message to chat
+    function addMessage(text, type = 'agent', toolCalls = null) {
+      const chatContainer = document.getElementById('chatContainer');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${type}`;
+      messageDiv.textContent = text;
+
+      if (toolCalls && toolCalls.length > 0) {
+        const toolDiv = document.createElement('div');
+        toolDiv.className = 'tool-calls';
+        toolDiv.innerHTML = `<strong>🔧 Tools used:</strong> ${toolCalls.map(t => t.tool).join(', ')}`;
+        messageDiv.appendChild(toolDiv);
+      }
+
+      chatContainer.appendChild(messageDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Send message to agent
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+
+      if (!message || isLoading) return;
+
+      // Add user message
+      addMessage(message, 'user');
+      input.value = '';
+
+      // Show loading
+      isLoading = true;
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = 'Thinking<span class="loading"></span>';
+
+      try {
+        const response = await fetch(`${API_URL}/agent/query`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          addMessage(data.response, 'agent', data.toolCalls);
+          
+          // Refresh events if calendar was modified
+          if (data.toolCalls?.some(t => t.tool.includes('calendar'))) {
+            await loadEvents();
+          }
+        } else {
+          addMessage(`❌ Error: ${data.error}`, 'system');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        addMessage('❌ Failed to connect to agent. Make sure the server is running on port 3000.', 'system');
+      } finally {
+        isLoading = false;
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
+    }
+
+    // Load calendar events
+    async function loadEvents() {
+      try {
+        const response = await fetch(`${API_URL}/calendar/events`);
+        const data = await response.json();
+
+        if (data.success && data.events.length > 0) {
+          const eventsSection = document.getElementById('eventsSection');
+          const eventsList = document.getElementById('eventsList');
+          
+          eventsList.innerHTML = data.events.map(event => `
+            <div class="event-item">
+              <strong>${event.title}</strong>
+              <div class="event-time">
+                ${new Date(event.startTime).toLocaleString()} - ${new Date(event.endTime).toLocaleString()}
+              </div>
+            </div>
+          `).join('');
+
+          eventsSection.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error loading events:', error);
+      }
+    }
+
+    // Use example prompt
+    function useExample(text) {
+      document.getElementById('messageInput').value = text;
+      document.getElementById('messageInput').focus();
+    }
+
+    // Handle Enter key
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    }
+
+    // Load events on page load
+    loadEvents();
+  </script>
+</body>
+</html>
