@@ -6,11 +6,24 @@ import MessagesCard from './components/MessagesCard';
 import EmailsCard from './components/EmailsCard';
 import ChatInput from './components/ChatInput';
 import ChatModal from './components/ChatModal';
+import GoogleCalendarAuth from './components/GoogleCalendarAuth';
+import AuthCallback from './components/AuthCallback';
+import { isAuthenticated, getAccessToken } from './utils/googleAuth';
+import { fetchGoogleCalendarEvents } from './utils/googleCalendarService';
 import type { Message, CalendarEvent, AgentResponse, CalendarEventsResponse } from './types';
 
 const API_URL = '/api'; // Use proxy in development
 
 function App() {
+  // Check if we're on the callback route first
+  if (window.location.pathname === '/auth/callback') {
+    return <AuthCallback />;
+  }
+
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const [messages, setMessages] = useState<Message[]>([
     {
       text: '👋 Welcome! I can help you schedule events, manage your calendar, and more. Try asking me to schedule something!',
@@ -21,14 +34,24 @@ function App() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [threadId] = useState(`thread-${Date.now()}`);
   const [isChatOpen, setIsChatOpen] = useState(false);
-
-  // Load events on mount
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  const [isCalendarAuthenticated, setIsCalendarAuthenticated] = useState(isAuthenticated());
 
   const loadEvents = async () => {
     try {
+      // Try to load from Google Calendar first if authenticated
+      if (isCalendarAuthenticated) {
+        try {
+          const googleEvents = await fetchGoogleCalendarEvents();
+          setEvents(googleEvents);
+          return;
+        } catch (error) {
+          console.error('Error loading Google Calendar events:', error);
+          // Fall back to backend calendar if Google Calendar fails
+          setIsCalendarAuthenticated(false);
+        }
+      }
+
+      // Fall back to backend calendar storage
       const response = await fetch(`${API_URL}/calendar/events`);
       const data: CalendarEventsResponse = await response.json();
 
@@ -39,6 +62,17 @@ function App() {
       console.error('Error loading events:', error);
     }
   };
+
+  const handleAuthChange = () => {
+    setIsCalendarAuthenticated(isAuthenticated());
+    loadEvents();
+  };
+
+  // Load events on mount and when auth changes
+  useEffect(() => {
+    loadEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCalendarAuthenticated]);
 
   const sendMessage = async (message: string) => {
     if (!message || isLoading) return;
@@ -57,6 +91,7 @@ function App() {
         body: JSON.stringify({
           message,
           threadId,
+          googleAccessToken: isCalendarAuthenticated ? getAccessToken() : undefined,
         }),
       });
 
@@ -74,7 +109,12 @@ function App() {
 
         // Refresh events if calendar was modified
         if (data.toolCalls?.some(t => t.tool.includes('calendar'))) {
-          await loadEvents();
+          try {
+            await loadEvents();
+          } catch (eventLoadError) {
+            console.error('Error reloading events after calendar update:', eventLoadError);
+            // Don't show error to user, calendar was updated successfully
+          }
         }
       } else {
         setMessages(prev => [
@@ -126,6 +166,17 @@ function App() {
 
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Google Calendar Auth - Spans full width when not authenticated */}
+          {!isCalendarAuthenticated ? (
+            <div className="lg:col-span-3">
+              <GoogleCalendarAuth onAuthChange={handleAuthChange} />
+            </div>
+          ) : (
+            <div className="lg:col-span-3">
+              <GoogleCalendarAuth onAuthChange={handleAuthChange} />
+            </div>
+          )}
+
           {/* Files Card - Spans 1 column */}
           <div className="lg:col-span-1">
             <FilesCard />
