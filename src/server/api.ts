@@ -31,6 +31,87 @@ app.use(express.json()); // Parse JSON bodies
 app.use(express.static(path.join(__dirname, 'public'))); // Serve static files
 
 /**
+ * Self-Reflection Helper
+ * Analyzes the agent's decisions and validates goal fulfillment
+ */
+async function performReflection({
+  message,
+  result,
+  sendStep,
+  res,
+  eventDetails
+}: {
+  message: string;
+  result: any;
+  sendStep: (action: string, status: string, details?: string) => void;
+  res: express.Response;
+  eventDetails: { title: string; startTime: string; endTime: string; eventTime: string };
+}) {
+  try {
+    sendStep('🧠 Reflecting on decisions', 'in-progress');
+    
+    // Extract steps from tool calls
+    const steps = (result.toolCalls as any)?.map((tc: any, idx: number) => {
+      const toolName = tc.payload?.toolName || tc.toolName || tc.name || 'unknown';
+      return `${idx + 1}. ${toolName}`;
+    }).join('\n') || 'No steps recorded';
+    
+    // Get all events from calendar for context
+    const allEvents = Array.from(calendarStore.getAllEvents().values());
+    const todayEvents = allEvents.filter(e => {
+      const eventDate = new Date(e.startTime).toISOString().split('T')[0];
+      const targetDate = new Date(eventDetails.startTime).toISOString().split('T')[0];
+      return eventDate === targetDate;
+    });
+    
+    const reflectionPrompt = `You are reviewing your own decision-making process.
+
+User Request: "${message}"
+
+Steps Executed:
+${steps}
+
+Final Action: Created event "${eventDetails.title}" at ${eventDetails.eventTime}
+Date: ${new Date(eventDetails.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+
+Context: User has ${todayEvents.length} event(s) today
+${todayEvents.length > 0 ? 'Other meetings: ' + todayEvents.map(e => {
+  const time = new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${e.title} at ${time}`;
+}).join(', ') : ''}
+
+Provide a structured self-reflection with EXACTLY this format:
+
+✅ Goal Status: [Completed/Partially Completed/Failed]
+🧠 Reasoning: [One sentence explaining why this time was chosen]
+⚠️ Potential Issue: [One concern or risk, or "None" if no issues]
+🔁 Suggestion: [One proactive next step, or "None needed"]
+
+Be concise. Each line should be ONE sentence maximum.`;
+
+    // Call Gemini for reflection
+    const { generateText } = await import('ai');
+    const { geminiPro } = await import('../llm/gemini.js');
+    const reflectionResult = await generateText({
+      model: geminiPro,
+      prompt: reflectionPrompt,
+    });
+    
+    sendStep('🧠 Reflection complete', 'completed');
+    
+    // Send reflection as separate SSE event
+    res.write(`data: ${JSON.stringify({
+      type: 'reflection',
+      content: reflectionResult.text,
+    })}\n\n`);
+    
+  } catch (error) {
+    console.error('[API] Reflection failed:', error);
+    sendStep('⚠️ Reflection skipped', 'completed');
+  }
+}
+
+/**
  * POST /api/agent/query-stream
  * 
  * Streaming endpoint for agent interactions with real-time step updates
@@ -162,6 +243,18 @@ app.post('/api/agent/query-stream', async (req, res) => {
           if (!sentSteps.has('google-calendar-success')) {
             sentSteps.add('google-calendar-success');
             sendStep('✅ Event created successfully', 'completed', `Scheduled at ${eventTime}`);
+          }
+          
+          // Trigger self-reflection after successful workflow
+          if (!sentSteps.has('reflection')) {
+            sentSteps.add('reflection');
+            await performReflection({
+              message,
+              result,
+              sendStep,
+              res,
+              eventDetails: { title, startTime, endTime, eventTime }
+            });
           }
         }
       } catch (error) {

@@ -42,6 +42,7 @@ IF the user did NOT specify a time:
   CALL findBestTimeSlot with:
   - date from Step 1
   - duration from Step 1
+  - isFatigued from Step 1 (if user mentioned being tired/exhausted)
   This will automatically find the best time slot
 
 **Step 4: Create the Event**

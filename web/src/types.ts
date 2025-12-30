@@ -37,4 +37,5 @@ export interface Message {
   toolCalls?: ToolCall[];
   events?: CalendarEvent[];
   steps?: AgentStep[];
+  reflection?: string;
 }

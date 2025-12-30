@@ -176,6 +176,17 @@ function Dashboard() {
                     console.error('Failed to refresh events:', err);
                   }
                 }
+              } else if (data.type === 'reflection') {
+                console.log('[Frontend] Received reflection');
+                // Add reflection to the message
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const msg = newMessages[messageIndex];
+                  if (msg) {
+                    msg.reflection = data.content;
+                  }
+                  return newMessages;
+                });
               } else if (data.type === 'error') {
                 setMessages(prev => {
                   const newMessages = [...prev];

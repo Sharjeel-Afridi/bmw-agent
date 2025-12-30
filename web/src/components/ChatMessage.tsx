@@ -1,6 +1,7 @@
 import { Calendar, Clock, Trash2 } from 'lucide-react';
 import type { Message } from '../types';
 import AgentSteps from './AgentSteps';
+import { ReflectionBlock } from './ReflectionBlock';
 
 interface ChatMessageProps {
   message: Message;
@@ -155,6 +156,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               {message.text}
             </div>
           )}
+          
+          {/* Self-reflection for event messages */}
+          {message.reflection && (
+            <ReflectionBlock content={message.reflection} />
+          )}
         </div>
         
         {message.toolCalls && message.toolCalls.length > 0 && (
@@ -174,6 +180,12 @@ export default function ChatMessage({ message }: ChatMessageProps) {
       )}
       
       <div className="whitespace-pre-wrap">{message.text}</div>
+      
+      {/* Self-reflection block */}
+      {message.type === 'agent' && message.reflection && (
+        <ReflectionBlock content={message.reflection} />
+      )}
+      
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-900">
           <strong>🔧 Tools used:</strong> {message.toolCalls.map(t => t.tool).join(', ')}

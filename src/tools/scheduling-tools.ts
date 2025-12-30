@@ -77,12 +77,17 @@ export const analyzeSchedulingRequestTool = createTool({
       duration = unit.startsWith('hour') || unit === 'hr' ? value * 60 : value;
     }
     
+    // Detect fatigue/energy indicators
+    const fatigueKeywords = ['tired', 'exhausted', 'worn out', 'drained', 'fatigued', 'burned out', 'need rest'];
+    const isFatigued = fatigueKeywords.some(keyword => request.toLowerCase().includes(keyword));
+    
     const result = {
       title,
       date: targetDate.toISOString().split('T')[0],
       preferredTime,
       duration,
       hasSpecificTime: !!preferredTime,
+      isFatigued,
       reasoning: preferredTime 
         ? `User specified a specific time: ${preferredTime}`
         : 'No specific time mentioned - will need to find best available slot'
@@ -156,11 +161,17 @@ export const findBestTimeSlotTool = createTool({
     date: z.string().describe('Date in YYYY-MM-DD format'),
     duration: z.number().describe('Duration in minutes'),
     preferredTime: z.string().optional().describe('Preferred time in HH:mm format (optional)'),
+    isFatigued: z.boolean().optional().describe('Whether user mentioned being tired or fatigued'),
   }),
   execute: async ({ context }) => {
-    const { date, duration, preferredTime } = context;
+    const { date, duration, preferredTime, isFatigued } = context;
     
-    console.log('[TOOL] Finding best time slot:', { date, duration, preferredTime });
+    console.log('[TOOL] Finding best time slot:', { date, duration, preferredTime, isFatigued });
+    
+    // Get current time
+    const now = new Date();
+    const today = new Date().toISOString().split('T')[0];
+    const isToday = date === today;
     
     // Get all events for the date
     const allEvents = Array.from(calendarStore.getAllEvents().values());
@@ -171,12 +182,48 @@ export const findBestTimeSlotTool = createTool({
       })
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     
+    // Detect continuous meeting blocks (meetings with <30 min gap)
+    const continuousBlocks: Array<{ start: Date; end: Date; duration: number }> = [];
+    if (eventsForDate.length > 0) {
+      let blockStart = new Date(eventsForDate[0].startTime);
+      let blockEnd = new Date(eventsForDate[0].endTime);
+      
+      for (let i = 1; i < eventsForDate.length; i++) {
+        const currentStart = new Date(eventsForDate[i].startTime);
+        const gap = (currentStart.getTime() - blockEnd.getTime()) / (1000 * 60);
+        
+        if (gap <= 30) {
+          // Extend the block
+          blockEnd = new Date(eventsForDate[i].endTime);
+        } else {
+          // Save current block and start new one
+          const blockDuration = (blockEnd.getTime() - blockStart.getTime()) / (1000 * 60);
+          if (blockDuration >= 120) { // Only track blocks 2+ hours
+            continuousBlocks.push({ start: blockStart, end: blockEnd, duration: blockDuration });
+          }
+          blockStart = currentStart;
+          blockEnd = new Date(eventsForDate[i].endTime);
+        }
+      }
+      
+      // Don't forget the last block
+      const blockDuration = (blockEnd.getTime() - blockStart.getTime()) / (1000 * 60);
+      if (blockDuration >= 120) {
+        continuousBlocks.push({ start: blockStart, end: blockEnd, duration: blockDuration });
+      }
+    }
+    
     // Working hours: 9 AM to 6 PM (IST)
     const workDayStart = 9;
     const workDayEnd = 18;
     
     // Convert to IST timezone offset (UTC+5:30)
     const targetDate = new Date(date + 'T00:00:00.000Z');
+    
+    // Helper function to check if a time slot is in the past
+    const isPastTime = (slotTime: Date) => {
+      return isToday && slotTime < now;
+    };
     
     // If user specified a preferred time, check if it's available
     if (preferredTime) {
@@ -217,10 +264,13 @@ export const findBestTimeSlotTool = createTool({
       const morningStart = new Date(targetDate);
       morningStart.setUTCHours(workDayStart - 5, -30, 0, 0); // 9 AM IST
       
-      if (firstEvent > morningStart) {
-        const gapDuration = (firstEvent.getTime() - morningStart.getTime()) / (1000 * 60);
+      // Use current time if today and current time is after work day start
+      const effectiveStart = (isToday && now > morningStart) ? now : morningStart;
+      
+      if (firstEvent > effectiveStart) {
+        const gapDuration = (firstEvent.getTime() - effectiveStart.getTime()) / (1000 * 60);
         if (gapDuration >= duration) {
-          gaps.push({ start: morningStart, end: firstEvent, durationMinutes: gapDuration });
+          gaps.push({ start: effectiveStart, end: firstEvent, durationMinutes: gapDuration });
         }
       }
     }
@@ -231,8 +281,19 @@ export const findBestTimeSlotTool = createTool({
       const nextStart = new Date(eventsForDate[i + 1].startTime);
       const gapDuration = (nextStart.getTime() - currentEnd.getTime()) / (1000 * 60);
       
-      if (gapDuration >= duration) {
-        gaps.push({ start: currentEnd, end: nextStart, durationMinutes: gapDuration });
+      // Check if current event is end of a long continuous block
+      const isAfterLongBlock = continuousBlocks.some(block => 
+        Math.abs(block.end.getTime() - currentEnd.getTime()) < 60000 // Within 1 minute
+      );
+      
+      // Require longer buffer after continuous blocks (60 min) or if user is fatigued
+      const requiredBuffer = (isAfterLongBlock || isFatigued) ? 60 : 0;
+      const availableGap = gapDuration - requiredBuffer;
+      
+      if (availableGap >= duration) {
+        // Add buffer time to the start
+        const bufferedStart = new Date(currentEnd.getTime() + requiredBuffer * 60 * 1000);
+        gaps.push({ start: bufferedStart, end: nextStart, durationMinutes: availableGap });
       }
     }
     
@@ -257,21 +318,70 @@ export const findBestTimeSlotTool = createTool({
       const afternoonStart = new Date(targetDate);
       afternoonStart.setUTCHours(14 - 5, -30, 0, 0); // 2 PM IST - preferred afternoon slot
       
-      const endTime = new Date(afternoonStart);
+      // If today, use current time or afternoon start, whichever is later
+      const effectiveStart = (isToday && now > afternoonStart) 
+        ? new Date(now.getTime() + 15 * 60 * 1000) // 15 min buffer from now
+        : afternoonStart;
+      
+      // If the effective start is past working hours, no slot available
+      const eveningEnd = new Date(targetDate);
+      eveningEnd.setUTCHours(workDayEnd - 5, -30, 0, 0);
+      
+      if (effectiveStart >= eveningEnd) {
+        return {
+          success: false,
+          reasoning: 'No available time slots today - all working hours have passed'
+        };
+      }
+      
+      const endTime = new Date(effectiveStart);
       endTime.setMinutes(endTime.getMinutes() + duration);
+      
+      const startTimeIST = new Date(effectiveStart.getTime() + (5.5 * 60 * 60 * 1000));
+      const timeStr = startTimeIST.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
       
       return {
         success: true,
-        startTime: afternoonStart.toISOString(),
+        startTime: effectiveStart.toISOString(),
         endTime: endTime.toISOString(),
-        reasoning: 'No events scheduled - chose 2:00 PM (preferred afternoon slot for meetings)'
+        startTimeIST: startTimeIST.toISOString(),
+        endTimeIST: new Date(endTime.getTime() + (5.5 * 60 * 60 * 1000)).toISOString(),
+        reasoning: isToday && now > afternoonStart
+          ? `No events scheduled - chose next available slot at ${timeStr}`
+          : 'No events scheduled - chose 2:00 PM (preferred afternoon slot for meetings)'
       };
     }
     
     // Score gaps (prefer afternoon, avoid lunch, prefer larger gaps)
     const scoredGaps = gaps.map(gap => {
+      // Skip gaps that start in the past
+      if (isPastTime(gap.start)) {
+        return { gap, score: -1000 }; // Negative score to filter out
+      }
+      
       const hour = gap.start.getUTCHours() + 5.5; // Convert to IST
       let score = 0;
+      
+      // Check if this gap is immediately after a long continuous block
+      const isAfterLongBlock = continuousBlocks.some(block => {
+        const timeSinceBlock = (gap.start.getTime() - block.end.getTime()) / (1000 * 60);
+        return timeSinceBlock >= 0 && timeSinceBlock < 60; // Within 60 min after block
+      });
+      
+      // Heavily penalize slots immediately after long meeting blocks
+      if (isAfterLongBlock) {
+        score -= 50;
+      }
+      
+      // If user is fatigued, heavily penalize late evening slots (after 6 PM)
+      if (isFatigued && hour >= 18) {
+        score -= 100;
+      }
+      
+      // If user is fatigued, prefer earlier slots
+      if (isFatigued && hour < 16) {
+        score += 20;
+      }
       
       // Prefer afternoon (2-5 PM)
       if (hour >= 14 && hour < 17) score += 30;
@@ -289,11 +399,21 @@ export const findBestTimeSlotTool = createTool({
       return { gap, score };
     });
     
-    // Sort by score (highest first)
+    // Sort by score (highest first) and filter out past times
     scoredGaps.sort((a, b) => b.score - a.score);
+    const validGaps = scoredGaps.filter(g => g.score > 0);
     
-    if (scoredGaps.length > 0) {
-      const bestGap = scoredGaps[0].gap;
+    if (validGaps.length === 0) {
+      return {
+        success: false,
+        reasoning: isToday 
+          ? 'No available time slots remaining today - all slots are either occupied or in the past'
+          : 'No available time slots found - all working hours are occupied'
+      };
+    }
+    
+    if (validGaps.length > 0) {
+      const bestGap = validGaps[0].gap;
       const startTime = new Date(bestGap.start);
       const endTime = new Date(startTime);
       endTime.setMinutes(endTime.getMinutes() + duration);
@@ -303,9 +423,9 @@ export const findBestTimeSlotTool = createTool({
       const timeStr = startTimeIST.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
       
       let reasoning = `Best available slot at ${timeStr} - `;
-      if (scoredGaps[0].score > 25) {
+      if (validGaps[0].score > 25) {
         reasoning += 'optimal afternoon time with good buffer between meetings';
-      } else if (scoredGaps[0].score > 15) {
+      } else if (validGaps[0].score > 15) {
         reasoning += 'suitable time slot with adequate spacing';
       } else {
         reasoning += 'available time slot that fits your schedule';
