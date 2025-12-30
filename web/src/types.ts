@@ -7,6 +7,7 @@ export interface AgentResponse {
   response: string;
   error?: string;
   toolCalls?: ToolCall[];
+  events?: CalendarEvent[];
 }
 
 export interface CalendarEvent {
@@ -25,4 +26,5 @@ export interface Message {
   text: string;
   type: 'user' | 'agent' | 'system';
   toolCalls?: ToolCall[];
+  events?: CalendarEvent[];
 }

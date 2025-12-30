@@ -117,11 +117,12 @@ function Dashboard() {
             text: data.response,
             type: 'agent',
             toolCalls: data.toolCalls,
+            events: data.events,
           },
         ]);
 
         // Refresh events if calendar was modified
-        if (data.toolCalls?.some(t => t.tool.includes('calendar'))) {
+        if (data.toolCalls?.some(t => t.tool.includes('calendar') || t.tool.includes('Calendar'))) {
           try {
             await loadEvents();
           } catch (eventLoadError) {
@@ -149,6 +150,48 @@ function Dashboard() {
       ]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      // Delete from backend using agent
+      const response = await fetch(`${API_URL}/agent/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Delete the event with ID ${eventId}`,
+          threadId,
+          googleAccessToken: isCalendarAuthenticated ? getAccessToken() : undefined,
+        }),
+      });
+
+      const data: AgentResponse = await response.json();
+
+      if (data.success) {
+        // Refresh events
+        await loadEvents();
+        
+        // Show success message
+        setMessages(prev => [
+          ...prev,
+          {
+            text: '✅ Meeting deleted successfully',
+            type: 'system',
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      setMessages(prev => [
+        ...prev,
+        {
+          text: '❌ Failed to delete meeting',
+          type: 'system',
+        },
+      ]);
     }
   };
 
@@ -197,7 +240,7 @@ function Dashboard() {
 
           {/* Meetings Card - Spans 2 columns on large screens */}
           <div className="lg:col-span-2">
-            <MeetingsCard events={events} />
+            <MeetingsCard events={events} onDeleteEvent={handleDeleteEvent} />
           </div>
 
           {/* Messages Card */}

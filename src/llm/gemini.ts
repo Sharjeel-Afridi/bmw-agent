@@ -31,7 +31,7 @@ export const geminiFlash = google('gemini-2.5-flash', {
 /**
  * Pro model available for complex tasks requiring better reasoning
  */
-export const geminiPro = google('gemini-1.5-pro', {
+export const geminiPro = google('gemini-2.5-flash-lite', {
   apiKey: process.env.GEMINI_API_KEY,
 });
 

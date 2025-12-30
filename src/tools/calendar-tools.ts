@@ -117,9 +117,54 @@ export const listCalendarEventsTool = createTool({
   execute: async () => {
     const events = calendarStore.getAllEvents();
     
+    console.log(`[CALENDAR TOOL] Listing events: ${events.length} events found`);
+    events.forEach(event => {
+      console.log(`[CALENDAR TOOL]   - ${event.title} | ${event.startTime} to ${event.endTime}`);
+    });
+    
     return {
       count: events.length,
       events,
+    };
+  },
+});
+
+/**
+ * Delete calendar event tool
+ * Removes an event from the calendar
+ */
+export const deleteCalendarEventTool = createTool({
+  id: 'delete-calendar-event',
+  description: 'Deletes a calendar event by its ID',
+  
+  inputSchema: z.object({
+    eventId: z.string().describe('The ID of the event to delete'),
+  }),
+  
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+  }),
+  
+  execute: async ({ context }) => {
+    const { eventId } = context;
+    
+    const event = calendarStore.getEventById(eventId);
+    
+    if (!event) {
+      return {
+        success: false,
+        message: `Event with ID "${eventId}" not found`,
+      };
+    }
+    
+    calendarStore.deleteEvent(eventId);
+    
+    console.log(`[CALENDAR TOOL] Deleted event: ${eventId} - "${event.title}"`);
+    
+    return {
+      success: true,
+      message: `Successfully deleted calendar event "${event.title}"`,
     };
   },
 });

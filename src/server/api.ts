@@ -54,6 +54,31 @@ app.post('/api/agent/query', async (req, res) => {
 
     console.log(`[API] Processing query: "${message}"`);
 
+    // If user has Google access token and is asking to list events, fetch from Google Calendar
+    if (googleAccessToken && message.toLowerCase().includes('list') || message.toLowerCase().includes('show') || message.toLowerCase().includes('events') || message.toLowerCase().includes('meetings')) {
+      try {
+        console.log('[API] Attempting to sync events from Google Calendar...');
+        const { fetchGoogleCalendarEvents } = await import('../utils/googleCalendar.js');
+        const googleEvents = await fetchGoogleCalendarEvents(googleAccessToken);
+        
+        // Sync events to local store
+        const { calendarStore } = await import('../memory/calendar-store.js');
+        calendarStore.clear();
+        googleEvents.forEach(event => {
+          calendarStore.addEvent({
+            title: event.title,
+            startTime: event.startTime,
+            endTime: event.endTime,
+          });
+        });
+        
+        console.log(`[API] Synced ${googleEvents.length} events from Google Calendar to local store`);
+      } catch (error) {
+        console.error('[API] Failed to sync from Google Calendar:', error);
+        // Continue with local store if sync fails
+      }
+    }
+
     // Generate response using orchestrator agent
     const result = await orchestratorAgent.generate(message, {
       ...(threadId && { threadId }), // Include threadId if provided for conversation continuity
@@ -67,7 +92,7 @@ app.post('/api/agent/query', async (req, res) => {
     
     if (googleAccessToken && result.toolCalls && result.toolCalls.length > 0) {
       console.log('[API] Checking for calendar tool calls...');
-      console.log('[API] Raw tool calls:', JSON.stringify(result.toolCalls, null, 2));
+      // console.log('[API] Raw tool calls:', JSON.stringify(result.toolCalls, null, 2));
       try {
         // Find the create calendar event tool call
         const createEventCall = (result.toolCalls as any).find((call: any) => {
@@ -106,9 +131,20 @@ app.post('/api/agent/query', async (req, res) => {
     console.log('[API] Tool calls to serialize:', toolCalls.length);
     console.log('[API] Tool results to serialize:', toolResults.length);
     
+    // If the agent used listCalendarEvents, include the events in the response
+    let events = null;
+    if (toolCalls.some((tc: any) => {
+      const toolName = tc.payload?.toolName || tc.toolName || tc.name || '';
+      return toolName === 'listCalendarEvents' || toolName === 'list-calendar-events';
+    })) {
+      events = Array.from(calendarStore.getAllEvents().values());
+      console.log('[API] Including events in response:', events.length);
+    }
+    
     res.json({
       success: true,
       response: result.text,
+      events: events,
       toolCalls: toolCalls.map((call: any) => {
         const toolData = {
           tool: call.payload?.toolName || call.toolName || call.name || 'unknown',

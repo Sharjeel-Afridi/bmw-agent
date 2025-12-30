@@ -36,6 +36,14 @@ class CalendarStore {
     return this.events.find(e => e.id === id);
   }
 
+  deleteEvent(id: string): boolean {
+    const index = this.events.findIndex(e => e.id === id);
+    if (index === -1) return false;
+    
+    this.events.splice(index, 1);
+    return true;
+  }
+
   clear(): void {
     this.events = [];
   }
