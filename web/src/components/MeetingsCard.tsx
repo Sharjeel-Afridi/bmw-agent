@@ -89,7 +89,7 @@ export default function MeetingsCard({ events, onDeleteEvent }: MeetingsCardProp
       {/* Next meetings */}
       {nextEvents.length > 0 && (
         <div className="space-y-2">
-          {nextEvents.map((event, index) => (
+          {nextEvents.map((event) => (
             <div key={event.id} className="relative pl-6">
               <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500"></div>
               {/* <div className="absolute -left-1 top-6 w-2 h-2 rounded-full bg-blue-500"></div> */}

@@ -1,18 +1,10 @@
-import { Calendar, Clock, Trash2 } from 'lucide-react';
-import type { Message } from '../types';
+import { Calendar, Clock } from 'lucide-react';
+import type { Message, CalendarEvent } from '../types';
 import AgentSteps from './AgentSteps';
 import { ReflectionBlock } from './ReflectionBlock';
 
 interface ChatMessageProps {
   message: Message;
-}
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  startTime: string;
-  endTime: string;
-  createdAt: string;
 }
 
 function formatEventTime(startTime: string, endTime: string): string {

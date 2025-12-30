@@ -6,7 +6,6 @@ import { setAccessToken, setRefreshToken } from '../utils/googleAuth';
 export default function AuthCallback() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [error, setError] = useState<string>('');
-  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -17,7 +16,6 @@ export default function AuthCallback() {
       if (errorParam) {
         setStatus('error');
         setError('Authorization was denied');
-        setIsRedirecting(true);
         setTimeout(() => {
           window.location.href = '/';
         }, 2000);
@@ -27,7 +25,6 @@ export default function AuthCallback() {
       if (!code) {
         setStatus('error');
         setError('No authorization code received');
-        setIsRedirecting(true);
         setTimeout(() => {
           window.location.href = '/';
         }, 2000);
@@ -41,7 +38,6 @@ export default function AuthCallback() {
           setRefreshToken(tokens.refresh_token);
         }
         setStatus('success');
-        setIsRedirecting(true);
         // Slightly longer delay to ensure tokens are saved
         setTimeout(() => {
           window.location.href = '/';
@@ -51,7 +47,6 @@ export default function AuthCallback() {
         setStatus('error');
         const errorMessage = err instanceof Error ? err.message : 'Failed to complete authorization';
         setError(errorMessage);
-        setIsRedirecting(true);
         setTimeout(() => {
           window.location.href = '/';
         }, 3000);
