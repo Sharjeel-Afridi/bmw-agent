@@ -26,7 +26,7 @@ function App() {
 function Dashboard() {
   const [messages, setMessages] = useState<Message[]>([
     {
-      text: '👋 Welcome! I can help you schedule events, manage your calendar, and more. Try asking me to schedule something!',
+      text: '👋 Welcome! Please connect your Google Calendar to get started. Once connected, I can help you schedule events, manage your calendar, and more!',
       type: 'system',
     },
   ]);
@@ -76,6 +76,19 @@ function Dashboard() {
 
   const sendMessage = async (message: string) => {
     if (!message || isLoading) return;
+
+    // Require Google OAuth authentication before allowing chat
+    if (!isCalendarAuthenticated) {
+      setMessages(prev => [
+        ...prev,
+        {
+          text: '🔒 Please connect your Google Calendar first to start using the assistant. Click the "Sign in with Google" button above.',
+          type: 'system',
+        },
+      ]);
+      setIsChatOpen(true);
+      return;
+    }
 
     // Add user message
     setMessages(prev => [...prev, { text: message, type: 'user' }]);
@@ -211,7 +224,11 @@ function Dashboard() {
       </div>
 
       {/* Chat Input */}
-      <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+      <ChatInput 
+        onSendMessage={sendMessage} 
+        isLoading={isLoading} 
+        disabled={!isCalendarAuthenticated}
+      />
 
       {/* Chat Modal */}
       <ChatModal 

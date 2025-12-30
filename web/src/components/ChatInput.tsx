@@ -5,14 +5,15 @@ import { Paperclip, Mic, Send } from 'lucide-react';
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading: boolean;
+  disabled?: boolean;
 }
 
-export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
+export default function ChatInput({ onSendMessage, isLoading, disabled = false }: ChatInputProps) {
   const [input, setInput] = useState('');
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (input.trim() && !isLoading && !disabled) {
       onSendMessage(input.trim());
       setInput('');
     }
@@ -26,8 +27,8 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything..."
-            disabled={isLoading}
+            placeholder={disabled ? "Connect Google Calendar to start..." : "Ask anything..."}
+            disabled={isLoading || disabled}
             className="flex-1 bg-transparent outline-none text-gray-900 placeholder-gray-400 disabled:opacity-50"
           />
           
@@ -50,7 +51,7 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
             
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || disabled}
               className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               aria-label="Send message"
             >
