@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Slack, Github, MessageCircle, ListTodo } from 'lucide-react';
 import FilesCard from './components/FilesCard';
 import MeetingsCard from './components/MeetingsCard';
 import MessagesCard from './components/MessagesCard';
@@ -299,9 +299,30 @@ function Dashboard() {
             </div>
           )}
 
-          {/* Files Card - Spans 1 column */}
-          <div className="lg:col-span-1">
-            <FilesCard />
+          {/* Placeholder for future integrations */}
+          <div className="lg:col-span-1 bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900">More Integrations</h3>
+              <p className="text-xs text-gray-500 mt-1">Coming soon...</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200">
+                <Slack className="w-8 h-8 text-purple-600 mb-2" />
+                <span className="text-xs font-medium text-purple-900">Slack</span>
+              </div>
+              <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200">
+                <Github className="w-8 h-8 text-gray-700 mb-2" />
+                <span className="text-xs font-medium text-gray-900">GitHub</span>
+              </div>
+              <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-100 border border-green-200">
+                <MessageCircle className="w-8 h-8 text-green-600 mb-2" />
+                <span className="text-xs font-medium text-green-900">WhatsApp</span>
+              </div>
+              <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
+                <ListTodo className="w-8 h-8 text-blue-600 mb-2" />
+                <span className="text-xs font-medium text-blue-900">Jira</span>
+              </div>
+            </div>
           </div>
 
           {/* Meetings Card - Spans 2 columns on large screens */}
@@ -318,17 +339,11 @@ function Dashboard() {
           <div className="lg:col-span-1">
             <EmailsCard />
           </div>
-
-          {/* Placeholder for future integrations */}
-          <div className="lg:col-span-1 bg-white rounded-2xl p-6 shadow-sm border-2 border-dashed border-gray-200 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-gray-400" />
-              </div>
-              <p className="text-sm font-medium text-gray-500">More integrations</p>
-              <p className="text-xs text-gray-400 mt-1">Coming soon...</p>
-            </div>
+          {/* Files Card - Spans 1 column */}
+          <div className="lg:col-span-1">
+            <FilesCard />
           </div>
+          
         </div>
       </div>
 

@@ -1,4 +1,5 @@
-import { Video, Calendar, Trash2 } from 'lucide-react';
+import { Video, Calendar, Trash2, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 import type { CalendarEvent } from '../types';
 
 interface MeetingsCardProps {
@@ -7,8 +8,20 @@ interface MeetingsCardProps {
 }
 
 export default function MeetingsCard({ events, onDeleteEvent }: MeetingsCardProps) {
-  const upcomingEvent = events[0];
-  const nextEvent = events[1];
+  const [showAll, setShowAll] = useState(false);
+  
+  // Filter for upcoming events only (future from now)
+  const now = new Date();
+  const upcomingEvents = events
+    .filter(event => new Date(event.startTime) > now)
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  
+  // Show first 3 or all based on state
+  const displayedEvents = showAll ? upcomingEvents : upcomingEvents.slice(0, 3);
+  const hasMore = upcomingEvents.length > 3;
+  
+  const upcomingEvent = displayedEvents[0];
+  const nextEvents = displayedEvents.slice(1);
 
   const handleDelete = (eventId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -35,9 +48,12 @@ export default function MeetingsCard({ events, onDeleteEvent }: MeetingsCardProp
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar className="w-5 h-5 text-gray-700" />
-        <h2 className="text-lg font-semibold text-gray-900">Upcoming Meetings</h2>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-gray-700" />
+          <h2 className="text-lg font-semibold text-gray-900">Upcoming Meetings</h2>
+        </div>
+        <span className="text-xs text-gray-500">{upcomingEvents.length} meeting{upcomingEvents.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Active Meeting */}
@@ -70,29 +86,53 @@ export default function MeetingsCard({ events, onDeleteEvent }: MeetingsCardProp
         </button>
       </div>
 
-      {/* Timeline to next meeting */}
-      {nextEvent && (
-        <div className="relative pl-6">
-          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500"></div>
-          <div className="absolute left-0 top-2 w-2 h-2 -ml-0.5 rounded-full bg-blue-500"></div>
-          <div className="py-2 flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-900">{nextEvent.title}</p>
-              <p className="text-xs text-gray-500">
-                {new Date(nextEvent.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-              </p>
+      {/* Next meetings */}
+      {nextEvents.length > 0 && (
+        <div className="space-y-2">
+          {nextEvents.map((event, index) => (
+            <div key={event.id} className="relative pl-6">
+              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500"></div>
+              {/* <div className="absolute -left-1 top-6 w-2 h-2 rounded-full bg-blue-500"></div> */}
+              <div className="py-2 flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{event.title}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  </p>
+                </div>
+                {onDeleteEvent && (
+                  <button
+                    onClick={(e) => handleDelete(event.id, e)}
+                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
+                    aria-label="Delete meeting"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
-            {onDeleteEvent && (
-              <button
-                onClick={(e) => handleDelete(nextEvent.id, e)}
-                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
-                aria-label="Delete meeting"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          ))}
         </div>
+      )}
+      
+      {/* View All button */}
+      {hasMore && !showAll && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full mt-4 py-2 text-sm font-medium text-primary hover:text-primary-dark flex items-center justify-center gap-1 hover:bg-blue-50 rounded-lg transition-colors"
+        >
+          View All ({upcomingEvents.length} meetings)
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+      
+      {showAll && hasMore && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="w-full mt-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center justify-center gap-1 hover:bg-gray-50 rounded-lg transition-colors"
+        >
+          Show Less
+        </button>
       )}
     </div>
   );
