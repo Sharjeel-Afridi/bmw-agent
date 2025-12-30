@@ -93,10 +93,19 @@ function Dashboard() {
     // Add user message
     setMessages(prev => [...prev, { text: message, type: 'user' }]);
     setIsLoading(true);
-    setIsChatOpen(true); // Open chat modal when sending message
+    setIsChatOpen(true);
+
+    // Create a placeholder message for streaming steps
+    const placeholderMessage: Message = {
+      text: '',
+      type: 'agent',
+      steps: [],
+    };
+    setMessages(prev => [...prev, placeholderMessage]);
+    const messageIndex = messages.length + 1; // +1 because we just added user message
 
     try {
-      const response = await fetch(`${API_URL}/agent/query`, {
+      const response = await fetch(`${API_URL}/agent/query-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -108,46 +117,92 @@ function Dashboard() {
         }),
       });
 
-      const data: AgentResponse = await response.json();
+      if (!response.body) {
+        throw new Error('No response body');
+      }
 
-      if (data.success) {
-        setMessages(prev => [
-          ...prev,
-          {
-            text: data.response,
-            type: 'agent',
-            toolCalls: data.toolCalls,
-            events: data.events,
-          },
-        ]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-        // Refresh events if calendar was modified
-        if (data.toolCalls?.some(t => t.tool.includes('calendar') || t.tool.includes('Calendar'))) {
-          try {
-            await loadEvents();
-          } catch (eventLoadError) {
-            console.error('Error reloading events after calendar update:', eventLoadError);
-            // Don't show error to user, calendar was updated successfully
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+          
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              console.log('[Frontend] Received SSE event:', data.type);
+
+              if (data.type === 'step') {
+                // Update the placeholder message with new step
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const msg = newMessages[messageIndex];
+                  if (msg) {
+                    msg.steps = [...(msg.steps || []), data.step];
+                  }
+                  return newMessages;
+                });
+              } else if (data.type === 'complete') {
+                console.log('[Frontend] Received complete event, stopping loader');
+                // Update with final response
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const msg = newMessages[messageIndex];
+                  if (msg) {
+                    msg.text = data.response;
+                    msg.events = data.events;
+                    msg.toolCalls = data.toolCalls;
+                  }
+                  return newMessages;
+                });
+                setIsLoading(false);
+
+                // Refresh events if calendar was modified
+                if (data.toolCalls?.some((t: any) => t.tool.includes('calendar') || t.tool.includes('Calendar'))) {
+                  try {
+                    await loadEvents();
+                  } catch (err) {
+                    console.error('Failed to refresh events:', err);
+                  }
+                }
+              } else if (data.type === 'error') {
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[messageIndex] = {
+                    text: `❌ Error: ${data.error}`,
+                    type: 'system',
+                  };
+                  return newMessages;
+                });
+                setIsLoading(false);
+              }
+            } catch (parseError) {
+              console.error('Failed to parse SSE data:', line, parseError);
+            }
           }
         }
-      } else {
-        setMessages(prev => [
-          ...prev,
-          {
-            text: `❌ Error: ${data.error}`,
-            type: 'system',
-          },
-        ]);
       }
     } catch (error) {
       console.error('Error:', error);
-      setMessages(prev => [
-        ...prev,
-        {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[messageIndex] = {
           text: '❌ Failed to connect to agent. Make sure the server is running on port 3000.',
           type: 'system',
-        },
-      ]);
+        };
+        return newMessages;
+      });
     } finally {
       setIsLoading(false);
     }

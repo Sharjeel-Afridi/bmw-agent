@@ -1,5 +1,6 @@
 import { Calendar, Clock, Trash2 } from 'lucide-react';
 import type { Message } from '../types';
+import AgentSteps from './AgentSteps';
 
 interface ChatMessageProps {
   message: Message;
@@ -89,6 +90,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     return (
       <div className="mb-4 animate-slideIn max-w-full">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
+          {/* Agent thinking steps */}
+          {message.steps && message.steps.length > 0 && (
+            <AgentSteps steps={message.steps} />
+          )}
+          
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="w-5 h-5 text-primary" />
             <div>
@@ -162,6 +168,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 
   return (
     <div className={`${baseClasses} ${typeClasses[message.type]}`}>
+      {/* Agent thinking steps for non-event messages */}
+      {message.type === 'agent' && message.steps && message.steps.length > 0 && (
+        <AgentSteps steps={message.steps} />
+      )}
+      
       <div className="whitespace-pre-wrap">{message.text}</div>
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-900">

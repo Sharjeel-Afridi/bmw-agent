@@ -31,15 +31,182 @@ app.use(express.json()); // Parse JSON bodies
 app.use(express.static(path.join(__dirname, 'public'))); // Serve static files
 
 /**
- * POST /api/agent/query
+ * POST /api/agent/query-stream
  * 
- * Main endpoint for agent interactions
+ * Streaming endpoint for agent interactions with real-time step updates
  * 
  * Body:
  * {
  *   "message": "Schedule a meeting tomorrow at 2pm",
- *   "threadId": "optional-conversation-id"
+ *   "threadId": "optional-conversation-id",
+ *   "googleAccessToken": "user-google-token"
  * }
+ */
+app.post('/api/agent/query-stream', async (req, res) => {
+  const { message, threadId, googleAccessToken } = req.body;
+
+  if (!message) {
+    return res.status(400).json({
+      error: 'Message is required',
+      success: false,
+    });
+  }
+
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const sendStep = (action: string, status: string = 'completed', details?: string) => {
+    const step = {
+      id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      action,
+      status,
+      timestamp: Date.now(),
+      details,
+    };
+    res.write(`data: ${JSON.stringify({ type: 'step', step })}\n\n`);
+  };
+
+  try {
+    console.log(`[API] Processing streaming query: "${message}"`);
+
+    // Track which steps have been sent to avoid duplicates
+    const sentSteps = new Set<string>();
+
+    // Always sync Google Calendar events
+    if (googleAccessToken) {
+      try {
+        const { fetchGoogleCalendarEvents } = await import('../utils/googleCalendar.js');
+        const googleEvents = await fetchGoogleCalendarEvents(googleAccessToken);
+        
+        const { calendarStore } = await import('../memory/calendar-store.js');
+        calendarStore.clear();
+        googleEvents.forEach(event => {
+          calendarStore.addEvent({
+            title: event.title,
+            startTime: event.startTime,
+            endTime: event.endTime,
+          });
+        });
+        
+        if (!sentSteps.has('sync')) {
+          sentSteps.add('sync');
+          sendStep('📅 Synced events from Google Calendar', 'completed');
+        }
+        console.log(`[API] Synced ${googleEvents.length} events`);
+      } catch (error) {
+        console.error('[API] Failed to sync from Google Calendar:', error);
+        sendStep('❌ Failed to sync Google Calendar', 'error');
+      }
+    }
+
+    // Send step updates as tools are called
+    const result = await orchestratorAgent.generate(message, {
+      ...(threadId && { threadId }),
+      onStepFinish: async (step: any) => {
+        // Send step update for each tool call
+        if (step.toolCalls) {
+          for (const tc of step.toolCalls) {
+            const toolName = tc.toolName || tc.name || '';
+            
+            // Avoid duplicate steps
+            if (sentSteps.has(toolName)) continue;
+            sentSteps.add(toolName);
+            
+            if (toolName === 'analyzeSchedulingRequest') {
+              sendStep('📋 Analyzing your scheduling request', 'completed');
+            } else if (toolName === 'getEventsForDate') {
+              sendStep('📅 Checking all events for that day', 'completed');
+            } else if (toolName === 'findBestTimeSlot') {
+              sendStep('🔍 Finding best available time slot', 'completed');
+            } else if (toolName === 'createCalendarEvent' || toolName === 'create-calendar-event') {
+              sendStep('✅ Creating calendar event', 'completed');
+            } else if (toolName === 'listCalendarEvents' || toolName === 'list-calendar-events') {
+              sendStep('📋 Listing calendar events', 'completed');
+            } else if (toolName === 'deleteCalendarEvent' || toolName === 'delete-calendar-event') {
+              sendStep('🗑️ Deleting event', 'completed');
+            }
+          }
+        }
+      },
+    });
+
+    // Handle Google Calendar event creation
+    if (googleAccessToken && result.toolCalls && result.toolCalls.length > 0) {
+      try {
+        const createEventCall = (result.toolCalls as any).find((call: any) => {
+          const toolName = call.payload?.toolName || call.toolName || call.name || '';
+          return toolName === 'create-calendar-event' || toolName === 'createCalendarEvent';
+        });
+        
+        if (createEventCall) {
+          const args = createEventCall.payload?.args || createEventCall.args || createEventCall.input || {};
+          const { title, startTime, endTime } = args as { title: string; startTime: string; endTime: string };
+          
+          const { createGoogleCalendarEvent } = await import('../utils/googleCalendar.js');
+          await createGoogleCalendarEvent(googleAccessToken, {
+            title,
+            startTime,
+            endTime,
+          });
+          
+          const eventTime = new Date(startTime).toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          });
+          
+          // Update the last step with more details
+          if (!sentSteps.has('google-calendar-success')) {
+            sentSteps.add('google-calendar-success');
+            sendStep('✅ Event created successfully', 'completed', `Scheduled at ${eventTime}`);
+          }
+        }
+      } catch (error) {
+        console.error('[API] Failed to create Google Calendar event:', error);
+        sendStep('❌ Failed to create in Google Calendar', 'error');
+      }
+    }
+
+    // Get events if list tool was called
+    let events = null;
+    const toolCalls = (result.toolCalls as any) || [];
+    if (toolCalls.some((tc: any) => {
+      const toolName = tc.payload?.toolName || tc.toolName || tc.name || '';
+      return toolName === 'listCalendarEvents' || toolName === 'list-calendar-events';
+    })) {
+      events = Array.from(calendarStore.getAllEvents().values());
+    }
+
+    // Send final response
+    const completePayload = {
+      type: 'complete',
+      response: result.text,
+      events,
+      toolCalls: toolCalls.map((tc: any) => ({
+        tool: tc.payload?.toolName || tc.toolName || tc.name || 'unknown',
+      })),
+    };
+    console.log('[API] Sending complete event with response length:', result.text?.length || 0);
+    res.write(`data: ${JSON.stringify(completePayload)}\n\n`);
+    console.log('[API] Complete event sent, ending stream');
+    res.end();
+  } catch (error) {
+    console.error('[API] Error in streaming endpoint:', error);
+    res.write(`data: ${JSON.stringify({
+      type: 'error',
+      error: 'Failed to process request',
+    })}\n\n`);
+    res.end();
+  }
+});
+
+/**
+ * POST /api/agent/query
+ * 
+ * Main endpoint for agent interactions (non-streaming)
  */
 app.post('/api/agent/query', async (req, res) => {
   try {
@@ -54,28 +221,41 @@ app.post('/api/agent/query', async (req, res) => {
 
     console.log(`[API] Processing query: "${message}"`);
 
-    // If user has Google access token and is asking to list events, fetch from Google Calendar
-    if (googleAccessToken && message.toLowerCase().includes('list') || message.toLowerCase().includes('show') || message.toLowerCase().includes('events') || message.toLowerCase().includes('meetings')) {
+    // Track agent steps for frontend display
+    const agentSteps: Array<{id: string; action: string; status: string; timestamp: number; details?: string}> = [];
+    
+    const addStep = (action: string, status: string = 'completed', details?: string) => {
+      agentSteps.push({
+        id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        action,
+        status,
+        timestamp: Date.now(),
+        details,
+      });
+    };
+
+    // Always sync Google Calendar events
+    if (googleAccessToken) {
       try {
-        console.log('[API] Attempting to sync events from Google Calendar...');
+        addStep('📅 Syncing events from Google Calendar', 'completed');
         const { fetchGoogleCalendarEvents } = await import('../utils/googleCalendar.js');
         const googleEvents = await fetchGoogleCalendarEvents(googleAccessToken);
         
-        // Sync events to local store
         const { calendarStore } = await import('../memory/calendar-store.js');
         calendarStore.clear();
         googleEvents.forEach(event => {
           calendarStore.addEvent({
+            id: event.id,
             title: event.title,
             startTime: event.startTime,
             endTime: event.endTime,
+            description: event.description,
           });
         });
-        
-        console.log(`[API] Synced ${googleEvents.length} events from Google Calendar to local store`);
+        console.log(`[API] Synced ${googleEvents.length} events from Google Calendar`);
       } catch (error) {
-        console.error('[API] Failed to sync from Google Calendar:', error);
-        // Continue with local store if sync fails
+        console.error('[API] Error syncing Google Calendar:', error);
+        addStep('Failed to sync Google Calendar events', 'error');
       }
     }
 
@@ -85,28 +265,41 @@ app.post('/api/agent/query', async (req, res) => {
     });
 
     // If calendar tool was used and we have a Google access token, create in Google Calendar too
-    console.log('[API] Checking if should create Google Calendar event...', {
-      hasAccessToken: !!googleAccessToken,
-      hasToolCalls: !!(result.toolCalls && result.toolCalls.length > 0),
-    });
-    
     if (googleAccessToken && result.toolCalls && result.toolCalls.length > 0) {
-      console.log('[API] Checking for calendar tool calls...');
+      
+      // Add step for each tool call
+      (result.toolCalls as any).forEach((tc: any) => {
+        const toolName = tc.payload?.toolName || tc.toolName || tc.name || '';
+        
+        if (toolName === 'analyzeSchedulingRequest') {
+          addStep('📋 Analyzing your scheduling request', 'completed');
+        } else if (toolName === 'getEventsForDate') {
+          addStep('📅 Checking all events for that day', 'completed');
+        } else if (toolName === 'findBestTimeSlot') {
+          addStep('🔍 Finding best available time slot', 'completed');
+        } else if (toolName === 'listCalendarEvents' || toolName === 'list-calendar-events') {
+          addStep('📋 Listing calendar events', 'completed');
+        } else if (toolName === 'createCalendarEvent' || toolName === 'create-calendar-event') {
+          addStep('✅ Creating calendar event', 'completed');
+        } else if (toolName === 'deleteCalendarEvent' || toolName === 'delete-calendar-event') {
+          addStep('🗑️ Deleting event', 'completed');
+        }
+      });
+      
       // console.log('[API] Raw tool calls:', JSON.stringify(result.toolCalls, null, 2));
       try {
         // Find the create calendar event tool call
         const createEventCall = (result.toolCalls as any).find((call: any) => {
           const toolName = call.payload?.toolName || call.toolName || call.name || '';
-          console.log('[API] Checking tool:', toolName);
           return toolName === 'create-calendar-event' || toolName === 'createCalendarEvent';
         });
-        
-        console.log('[API] Found create event call:', !!createEventCall);
         
         if (createEventCall) {
           const args = createEventCall.payload?.args || createEventCall.args || createEventCall.input || {};
           const { title, startTime, endTime } = args as { title: string; startTime: string; endTime: string };
-          console.log('[API] Creating event in Google Calendar:', { title, startTime, endTime });
+          
+          addStep('Finding best available time', 'completed');
+          addStep('Creating event in Google Calendar', 'in-progress');
           
           const { createGoogleCalendarEvent } = await import('../utils/googleCalendar.js');
           const googleEventId = await createGoogleCalendarEvent(googleAccessToken, {
@@ -115,7 +308,14 @@ app.post('/api/agent/query', async (req, res) => {
             endTime,
           });
           
-          console.log(`[API] Created Google Calendar event: ${googleEventId}`);
+          // Format time for display
+          const eventTime = new Date(startTime).toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          });
+          
+          addStep('Event created successfully', 'completed', `Scheduled at ${eventTime}`);
         }
       } catch (error) {
         console.error('[API] Failed to create Google Calendar event:', error);
@@ -127,10 +327,6 @@ app.post('/api/agent/query', async (req, res) => {
     const toolCalls = (result.toolCalls as any) || [];
     const toolResults = (result.toolResults as any) || [];
     
-    console.log('[API] Serializing response...');
-    console.log('[API] Tool calls to serialize:', toolCalls.length);
-    console.log('[API] Tool results to serialize:', toolResults.length);
-    
     // If the agent used listCalendarEvents, include the events in the response
     let events = null;
     if (toolCalls.some((tc: any) => {
@@ -138,29 +334,21 @@ app.post('/api/agent/query', async (req, res) => {
       return toolName === 'listCalendarEvents' || toolName === 'list-calendar-events';
     })) {
       events = Array.from(calendarStore.getAllEvents().values());
-      console.log('[API] Including events in response:', events.length);
     }
     
     res.json({
       success: true,
       response: result.text,
       events: events,
-      toolCalls: toolCalls.map((call: any) => {
-        const toolData = {
-          tool: call.payload?.toolName || call.toolName || call.name || 'unknown',
-          args: call.payload?.args || call.args || call.input || {},
-        };
-        console.log('[API] Serialized tool call:', JSON.stringify(toolData));
-        return toolData;
-      }),
-      toolResults: toolResults.map((tr: any) => {
-        const resultData = {
-          tool: tr.payload?.toolName || tr.toolName || tr.name || 'unknown',
-          result: tr.payload?.result || tr.result || {},
-        };
-        console.log('[API] Serialized tool result:', JSON.stringify(resultData));
-        return resultData;
-      }),
+      steps: agentSteps,
+      toolCalls: toolCalls.map((call: any) => ({
+        tool: call.payload?.toolName || call.toolName || call.name || 'unknown',
+        args: call.payload?.args || call.args || call.input || {},
+      })),
+      toolResults: toolResults.map((tr: any) => ({
+        tool: tr.payload?.toolName || tr.toolName || tr.name || 'unknown',
+        result: tr.payload?.result || tr.result || {},
+      })),
     });
 
   } catch (error) {
